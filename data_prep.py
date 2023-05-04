@@ -10,7 +10,7 @@ def main():
     f_crop = open("CUB_200_2011/CUB_200_2011/bounding_boxes.txt", "r")
 
     for line_test, line_path, line_crop in zip(f_test.readlines(), f_path.readlines(), f_crop.readlines()):
-        test = line_test.replace("\n", "").split(' ')[1]
+        test = int(line_test.replace("\n", "").split(' ')[1])
         path = line_path.replace("\n", "").split(' ')[1]
         left, top, width, height = line_crop.replace("\n", "").split(' ')[1:]
 

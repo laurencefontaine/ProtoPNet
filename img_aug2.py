@@ -110,7 +110,7 @@ def train_valid_test(path):
              'test' : train_dict}
     json_dict = json.dumps(split, indent=4)
     
-    with open("train.json", "w") as outfile:
+    with open("split_info.json", "w") as outfile:
         outfile.write(json_dict)    
 
 
@@ -141,12 +141,12 @@ if __name__ == '__main__':
     classes_path = './CUB_200_2011/classes.txt'
     dir = datasets_root_dir + 'train_cropped/'
     target_dir = datasets_root_dir + 'train_cropped_augmented/'
-    load_dataset(file_path='./train.json', sub_data='train')
+    #load_dataset(file_path='./train.json', sub_data='train')
     #augmenter(dir, target_dir)
-    with open('./train.json') as file:
-        full_data = json.load(file)
+    # with open('./train.json') as file:
+    #     full_data = json.load(file)
     #print(full_data['train'])
-    #train_valid_test(datasets_root_dir)
+    train_valid_test(datasets_root_dir)
 
     
     # for i in range(0, 60):

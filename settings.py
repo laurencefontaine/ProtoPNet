@@ -7,7 +7,8 @@ add_on_layers_type = 'regular'
 
 experiment_run = '003'
 
-data_path = './datasets/cub200_cropped/'
+#data_path = './datasets/cub200_cropped/'
+data_path = './split_info.json'
 train_dir = data_path + 'train_cropped/'
 test_dir = data_path + 'test_cropped/'
 train_push_dir = data_path + 'train_cropped/'
@@ -32,7 +33,7 @@ coefs = {
     'l1': 1e-4,
 }
 
-num_train_epochs = 1000
+num_train_epochs = 500
 num_warm_epochs = 5
 
 push_start = 10

@@ -9,7 +9,7 @@ import torchvision.datasets as datasets
 
 import argparse
 import re
-
+import loader
 from helpers import makedir
 import model
 import push
@@ -18,6 +18,7 @@ import train_and_test as tnt
 import save
 from log import create_logger
 from preprocess import mean, std, preprocess_input_function
+from settings import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-gpuid', nargs=1, type=str, default='0') # python3 main.py -gpuid=0,1,2,3
@@ -26,12 +27,11 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[0]
 print(os.environ['CUDA_VISIBLE_DEVICES'])
 
 # book keeping namings and code
-from settings import base_architecture, img_size, prototype_shape, num_classes, \
-                     prototype_activation_function, add_on_layers_type, experiment_run
+#from settings import base_architecture, img_size, prototype_shape, num_classes, prototype_activation_function, add_on_layers_type, experiment_run
 
 base_architecture_type = re.match('^[a-z]*', base_architecture).group(0)
 
-model_dir = './saved_models/' + base_architecture + '/' + experiment_run + '/'
+model_dir = './proto_output/' + base_architecture + '/' + experiment_run + '/'
 makedir(model_dir)
 shutil.copy(src=os.path.join(os.getcwd(), __file__), dst=model_dir)
 shutil.copy(src=os.path.join(os.getcwd(), 'settings.py'), dst=model_dir)
@@ -48,45 +48,42 @@ prototype_self_act_filename_prefix = 'prototype-self-act'
 proto_bound_boxes_filename_prefix = 'bb'
 
 # load the data
-from settings import train_dir, test_dir, train_push_dir, \
-                     train_batch_size, test_batch_size, train_push_batch_size
+#from settings import train_dir, test_dir, train_push_dir, train_batch_size, test_batch_size, train_push_batch_size
 
 normalize = transforms.Normalize(mean=mean,
                                  std=std)
 
 # all datasets
 # train set
-train_dataset = datasets.ImageFolder(
-    train_dir,
-    transforms.Compose([
-        transforms.Resize(size=(img_size, img_size)),
-        transforms.ToTensor(),
-        normalize,
-    ]))
+torch.manual_seed(17)
+train_dataset = loader.CroppedDataset(data_path, sub_data='train', norm=True, augmentation=True, resize=img_size, mean=mean, std=std)
+#train_dataset = datasets.ImageFolder(train_dir, 
+#                                     transforms.Compose([transforms.Resize(size=(img_size, img_size)), transforms.ToTensor(), normalize,]))
 train_loader = torch.utils.data.DataLoader(
     train_dataset, batch_size=train_batch_size, shuffle=True,
     num_workers=4, pin_memory=False)
 # push set
-train_push_dataset = datasets.ImageFolder(
-    train_push_dir,
-    transforms.Compose([
-        transforms.Resize(size=(img_size, img_size)),
-        transforms.ToTensor(),
-    ]))
+train_push_dataset = loader.CroppedDataset(data_path, sub_data='train', norm=False, augmentation=False, resize=img_size)
+# train_push_dataset = datasets.ImageFolder(train_push_dir, 
+#                                           transforms.Compose([transforms.Resize(size=(img_size, img_size)),transforms.ToTensor(),]))
 train_push_loader = torch.utils.data.DataLoader(
     train_push_dataset, batch_size=train_push_batch_size, shuffle=False,
     num_workers=4, pin_memory=False)
 # test set
-test_dataset = datasets.ImageFolder(
-    test_dir,
-    transforms.Compose([
-        transforms.Resize(size=(img_size, img_size)),
-        transforms.ToTensor(),
-        normalize,
-    ]))
+# test_dataset = datasets.ImageFolder(
+#     test_dir,
+#     transforms.Compose([
+#         transforms.Resize(size=(img_size, img_size)),
+#         transforms.ToTensor(),
+#         normalize,
+#     ]))
+
+test_dataset = loader.CroppedDataset(data_path, sub_data='valid', norm=False, augmentation=False, resize=img_size)
 test_loader = torch.utils.data.DataLoader(
     test_dataset, batch_size=test_batch_size, shuffle=False,
     num_workers=4, pin_memory=False)
+# for image, label in test_loader:
+#     print(label)
 
 # we should look into distributed sampler more carefully at torch.utils.data.distributed.DistributedSampler(train_dataset)
 log('training set size: {0}'.format(len(train_loader.dataset)))
@@ -103,12 +100,14 @@ ppnet = model.construct_PPNet(base_architecture=base_architecture,
                               add_on_layers_type=add_on_layers_type)
 #if prototype_activation_function == 'linear':
 #    ppnet.set_last_layer_incorrect_connection(incorrect_strength=0)
-ppnet = ppnet.cuda()
+
+if torch.cuda.is_available():
+    ppnet = ppnet.cuda()
 ppnet_multi = torch.nn.DataParallel(ppnet)
 class_specific = True
 
 # define optimizer
-from settings import joint_optimizer_lrs, joint_lr_step_size
+#from settings import joint_optimizer_lrs, joint_lr_step_size
 joint_optimizer_specs = \
 [{'params': ppnet.features.parameters(), 'lr': joint_optimizer_lrs['features'], 'weight_decay': 1e-3}, # bias are now also being regularized
  {'params': ppnet.add_on_layers.parameters(), 'lr': joint_optimizer_lrs['add_on_layers'], 'weight_decay': 1e-3},
@@ -129,10 +128,10 @@ last_layer_optimizer_specs = [{'params': ppnet.last_layer.parameters(), 'lr': la
 last_layer_optimizer = torch.optim.Adam(last_layer_optimizer_specs)
 
 # weighting of different training losses
-from settings import coefs
+#from settings import coefs
 
 # number of training epochs, number of warm epochs, push start epoch, push epochs
-from settings import num_train_epochs, num_warm_epochs, push_start, push_epochs
+#from settings import num_train_epochs, num_warm_epochs, push_start, push_epochs
 
 # train the model
 log('start training')

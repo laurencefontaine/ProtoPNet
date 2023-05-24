@@ -79,23 +79,27 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
         assigned to serve as prototype
         '''
         start_index_of_search_batch = push_iter * search_batch_size
-
+        print('batch: ', push_iter)
+        for i in range(4):
+            print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(i)/1024/1024/1024))
+        
         update_prototypes_on_batch(search_batch_input,
-                                   start_index_of_search_batch,
-                                   prototype_network_parallel,
-                                   global_min_proto_dist,
-                                   global_min_fmap_patches,
-                                   proto_rf_boxes,
-                                   proto_bound_boxes,
-                                   class_specific=class_specific,
-                                   search_y=search_y,
-                                   num_classes=num_classes,
-                                   preprocess_input_function=preprocess_input_function,
-                                   prototype_layer_stride=prototype_layer_stride,
-                                   dir_for_saving_prototypes=proto_epoch_dir,
-                                   prototype_img_filename_prefix=prototype_img_filename_prefix,
-                                   prototype_self_act_filename_prefix=prototype_self_act_filename_prefix,
-                                   prototype_activation_function_in_numpy=prototype_activation_function_in_numpy)
+                                start_index_of_search_batch,
+                                prototype_network_parallel,
+                                global_min_proto_dist,
+                                global_min_fmap_patches,
+                                proto_rf_boxes,
+                                proto_bound_boxes,
+                                class_specific=class_specific,
+                                search_y=search_y,
+                                num_classes=num_classes,
+                                preprocess_input_function=preprocess_input_function,
+                                prototype_layer_stride=prototype_layer_stride,
+                                dir_for_saving_prototypes=proto_epoch_dir,
+                                epoch = epoch_number,
+                                prototype_img_filename_prefix=prototype_img_filename_prefix,
+                                prototype_self_act_filename_prefix=prototype_self_act_filename_prefix,
+                                prototype_activation_function_in_numpy=prototype_activation_function_in_numpy)
 
     if proto_epoch_dir != None and proto_bound_boxes_filename_prefix != None:
         np.save(os.path.join(proto_epoch_dir, proto_bound_boxes_filename_prefix + '-receptive_field' + str(epoch_number) + '.npy'),
@@ -125,9 +129,11 @@ def update_prototypes_on_batch(search_batch_input,
                                preprocess_input_function=None,
                                prototype_layer_stride=1,
                                dir_for_saving_prototypes=None,
+                               epoch = None,
                                prototype_img_filename_prefix=None,
                                prototype_self_act_filename_prefix=None,
                                prototype_activation_function_in_numpy=None):
+    print(preprocess_input_function)
 
     prototype_network_parallel.eval()
 
@@ -253,7 +259,7 @@ def update_prototypes_on_batch(search_batch_input,
             if proto_bound_boxes.shape[1] == 6 and search_y is not None:
                 proto_bound_boxes[j, 5] = search_y[rf_prototype_j[0]].item()
 
-            if dir_for_saving_prototypes is not None:
+            if dir_for_saving_prototypes is not None and (epoch % 50 == 0 or epoch<50):
                 if prototype_self_act_filename_prefix is not None:
                     # save the numpy array of the prototype self activation
                     np.save(os.path.join(dir_for_saving_prototypes,
@@ -261,11 +267,11 @@ def update_prototypes_on_batch(search_batch_input,
                             proto_act_img_j)
                 if prototype_img_filename_prefix is not None:
                     # save the whole image containing the prototype as png
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
-                                            prototype_img_filename_prefix + '-original' + str(j) + '.png'),
-                               original_img_j,
-                               vmin=0.0,
-                               vmax=1.0)
+                    # plt.imsave(os.path.join(dir_for_saving_prototypes,
+                    #                         prototype_img_filename_prefix + '-original' + str(j) + '.png'),
+                    #            original_img_j,
+                    #            vmin=0.0,
+                    #            vmax=1.0)
                     # overlay (upsampled) self activation on original image and save the result
                     rescaled_act_img_j = upsampled_act_img_j - np.amin(upsampled_act_img_j)
                     rescaled_act_img_j = rescaled_act_img_j / np.amax(rescaled_act_img_j)

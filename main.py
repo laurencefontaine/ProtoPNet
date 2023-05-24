@@ -21,10 +21,10 @@ from preprocess import mean, std, preprocess_input_function
 from settings import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-gpuid', nargs=1, type=str, default='0') # python3 main.py -gpuid=0,1,2,3
+parser.add_argument('-gpuid', nargs=1, type=str, default='0,1,2,3') # python3 main.py -gpuid=0,1,2,3
 args = parser.parse_args()
-os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[0]
-print(os.environ['CUDA_VISIBLE_DEVICES'])
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[:]
+print('GPUs: ', os.environ['CUDA_VISIBLE_DEVICES'])
 
 # book keeping namings and code
 #from settings import base_architecture, img_size, prototype_shape, num_classes, prototype_activation_function, add_on_layers_type, experiment_run
@@ -41,7 +41,9 @@ shutil.copy(src=os.path.join(os.getcwd(), 'train_and_test.py'), dst=model_dir)
 
 log, logclose = create_logger(log_filename=os.path.join(model_dir, 'train.log'))
 img_dir = os.path.join(model_dir, 'img')
+augmented_dir =  os.path.join(model_dir, 'img_aug')
 makedir(img_dir)
+#makedir(augmented_dir)
 weight_matrix_filename = 'outputL_weights'
 prototype_img_filename_prefix = 'prototype-img'
 prototype_self_act_filename_prefix = 'prototype-self-act'
@@ -57,11 +59,16 @@ normalize = transforms.Normalize(mean=mean,
 # train set
 torch.manual_seed(17)
 train_dataset = loader.CroppedDataset(data_path, sub_data='train', norm=True, augmentation=True, resize=img_size, mean=mean, std=std)
-#train_dataset = datasets.ImageFolder(train_dir, 
+# train_dataset = datasets.ImageFolder(train_dir, 
 #                                     transforms.Compose([transforms.Resize(size=(img_size, img_size)), transforms.ToTensor(), normalize,]))
 train_loader = torch.utils.data.DataLoader(
     train_dataset, batch_size=train_batch_size, shuffle=True,
     num_workers=4, pin_memory=False)
+
+
+print(torch.cuda.device_count())
+
+
 # push set
 train_push_dataset = loader.CroppedDataset(data_path, sub_data='train', norm=False, augmentation=False, resize=img_size)
 # train_push_dataset = datasets.ImageFolder(train_push_dir, 
@@ -78,7 +85,7 @@ train_push_loader = torch.utils.data.DataLoader(
 #         normalize,
 #     ]))
 
-test_dataset = loader.CroppedDataset(data_path, sub_data='valid', norm=False, augmentation=False, resize=img_size)
+test_dataset = loader.CroppedDataset(data_path, sub_data='valid', norm=True, augmentation=False, resize=img_size)
 test_loader = torch.utils.data.DataLoader(
     test_dataset, batch_size=test_batch_size, shuffle=False,
     num_workers=4, pin_memory=False)
@@ -90,6 +97,7 @@ log('training set size: {0}'.format(len(train_loader.dataset)))
 log('push set size: {0}'.format(len(train_push_loader.dataset)))
 log('test set size: {0}'.format(len(test_loader.dataset)))
 log('batch size: {0}'.format(train_batch_size))
+log('savefolder: {0}'.format(experiment_run))
 
 # construct the model
 ppnet = model.construct_PPNet(base_architecture=base_architecture,
@@ -100,10 +108,13 @@ ppnet = model.construct_PPNet(base_architecture=base_architecture,
                               add_on_layers_type=add_on_layers_type)
 #if prototype_activation_function == 'linear':
 #    ppnet.set_last_layer_incorrect_connection(incorrect_strength=0)
-
+ppnet_multi = torch.nn.DataParallel(ppnet)
 if torch.cuda.is_available():
     ppnet = ppnet.cuda()
-ppnet_multi = torch.nn.DataParallel(ppnet)
+
+print('gpus:', torch.cuda.device_count())
+#available_gpus = [torch.cuda.device(i) for i in range(torch.cuda.device_count())]
+#print(available_gpus[:])
 class_specific = True
 
 # define optimizer
@@ -137,6 +148,8 @@ last_layer_optimizer = torch.optim.Adam(last_layer_optimizer_specs)
 log('start training')
 import copy
 for epoch in range(num_train_epochs):
+
+
     log('epoch: \t{0}'.format(epoch))
 
     if epoch < num_warm_epochs:
@@ -151,8 +164,8 @@ for epoch in range(num_train_epochs):
 
     accu = tnt.test(model=ppnet_multi, dataloader=test_loader,
                     class_specific=class_specific, log=log)
-    save.save_model_w_condition(model=ppnet, model_dir=model_dir, model_name=str(epoch) + 'nopush', accu=accu,
-                                target_accu=0.70, log=log)
+    # save.save_model_w_condition(model=ppnet, model_dir=model_dir, model_name=str(epoch) + 'nopush', accu=accu,
+    #                             target_accu=0.70, epoch=epoch, log=log)
 
     if epoch >= push_start and epoch in push_epochs:
         push.push_prototypes(
@@ -171,7 +184,7 @@ for epoch in range(num_train_epochs):
         accu = tnt.test(model=ppnet_multi, dataloader=test_loader,
                         class_specific=class_specific, log=log)
         save.save_model_w_condition(model=ppnet, model_dir=model_dir, model_name=str(epoch) + 'push', accu=accu,
-                                    target_accu=0.70, log=log)
+                                    target_accu=0.70, epoch=epoch, log=log)
 
         if prototype_activation_function != 'linear':
             tnt.last_only(model=ppnet_multi, log=log)
@@ -181,8 +194,9 @@ for epoch in range(num_train_epochs):
                               class_specific=class_specific, coefs=coefs, log=log)
                 accu = tnt.test(model=ppnet_multi, dataloader=test_loader,
                                 class_specific=class_specific, log=log)
-                save.save_model_w_condition(model=ppnet, model_dir=model_dir, model_name=str(epoch) + '_' + str(i) + 'push', accu=accu,
-                                            target_accu=0.70, log=log)
+                if i == 19:
+                    save.save_model_w_condition(model=ppnet, model_dir=model_dir, model_name=str(epoch) + '_' + str(i) + 'push', accu=accu,
+                                                target_accu=0.70, epoch=epoch, log=log)
    
 logclose()
 

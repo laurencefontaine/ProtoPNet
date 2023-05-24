@@ -1,7 +1,10 @@
 import time
 import torch
+import os
+import torchvision.transforms as T
+from PIL import Image
 
-from helpers import list_of_distances, make_one_hot
+from helpers import list_of_distances, make_one_hot, makedir
 
 def _train_or_test(model, dataloader, optimizer=None, class_specific=True, use_l1_mask=True,
                    coefs=None, log=print):
@@ -20,13 +23,27 @@ def _train_or_test(model, dataloader, optimizer=None, class_specific=True, use_l
     # separation cost is meaningful only for class_specific
     total_separation_cost = 0
     total_avg_separation_cost = 0
+    #print('local id: ', int(os.environ.get("SLURM_LOCALID")))
+    
 
     for i, (image, label) in enumerate(dataloader):
+        
+        # for img, path in zip(image, paths):
+        #     t_pil = T.ToPILImage()
+        #     save_path = os.path.join('./proto_output/vgg19/004/img_aug',str(i) , path.split('/')[0])
+        #     makedir(save_path)
+        #     image_pil = t_pil(img)
+
+        #     image_pil.save(os.path.join('./proto_output/vgg19/004/img_aug', str(i), path))
+
 
         input = image.cuda()
+        
+        
         #print(input.shape)
         target = label.cuda()
         #print(label)
+        
         
 
         # torch.enable_grad() has no effect outside of no_grad()
@@ -55,13 +72,11 @@ def _train_or_test(model, dataloader, optimizer=None, class_specific=True, use_l
                 #print("ici2")
                 # calculate separation cost
                 prototypes_of_wrong_class = 1 - prototypes_of_correct_class
-                inverted_distances_to_nontarget_prototypes, _ = \
-                    torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
+                inverted_distances_to_nontarget_prototypes, _ = torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
                 separation_cost = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
                 #print("ici3")
                 # calculate avg cluster cost
-                avg_separation_cost = \
-                    torch.sum(min_distances * prototypes_of_wrong_class, dim=1) / torch.sum(prototypes_of_wrong_class, dim=1)
+                avg_separation_cost = torch.sum(min_distances * prototypes_of_wrong_class, dim=1) / torch.sum(prototypes_of_wrong_class, dim=1)
                 avg_separation_cost = torch.mean(avg_separation_cost)
                 #print("ici4")
                 if use_l1_mask:
@@ -86,6 +101,9 @@ def _train_or_test(model, dataloader, optimizer=None, class_specific=True, use_l
             total_separation_cost += separation_cost.item()
             total_avg_separation_cost += avg_separation_cost.item()
             #torch.cuda.empty_cache()
+        print('batch: ', i)
+        for i in range(4):
+            print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(i)/1024/1024/1024))
 
        # print("ici6")
         # compute gradient and do SGD step
@@ -105,18 +123,21 @@ def _train_or_test(model, dataloader, optimizer=None, class_specific=True, use_l
                           + coefs['l1'] * l1)
                 else:
                     loss = cross_entropy + 0.8 * cluster_cost + 1e-4 * l1
+            
+        
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
+        
+        
         del input
         del target
         del output
         del predicted
         del min_distances
-    
+        torch.cuda.empty_cache()
     end = time.time()
-    torch.cuda.empty_cache()
+    
 
     log('\ttime: \t{0}'.format(end -  start))
     log('\tcross ent: \t{0}'.format(total_cross_entropy / n_batches))

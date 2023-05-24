@@ -3,7 +3,7 @@
 import os
 import numpy as np
 import json
-
+import torch
 from sklearn import model_selection
 
 from torch.utils.data import Dataset
@@ -63,6 +63,7 @@ def train_valid_test(path):
     train_dict = {}
     valid_dict = {}
     test_dict = {}
+    np.random.seed(17)
     with open('./CUB_200_2011/images.txt', 'r' ) as file:
         lines = file.readlines()
         file.close()
@@ -75,43 +76,56 @@ def train_valid_test(path):
 
     for i, crop in enumerate(crops):
         crops[i] = crop.split('\n')[0].split(' ')[1:]
-    
-    for n, c in enumerate(listdir(path)):
-        
-        img_class = listdir(os.path.join(path, c))
+    #print(listdir(path))
+    #print(sorted(listdir(path)))
+    for n, c in enumerate(sorted(listdir(path))):
+        #print()
+        img_class = sorted(listdir(os.path.join(path, c)))
 
         #x_train, x_test_ = model_selection.train_test_split(range(1, len(img_class)+1), test_size=0.5)
         #x_valid, x_test = model_selection.train_test_split(x_test_, test_size=0.5)
         
         x_train, x_test_ = model_selection.train_test_split(img_class, test_size=0.5)
+        #print(x_train)
         x_valid, x_test = model_selection.train_test_split(x_test_, test_size=0.5)
-        
+        print(n)
         for train in x_train:
             idx = lines.index(train)
+            if idx < 10:
+                print(crops[0])
+                print(idx) 
 
-            train_dict['{}/{}'.format(c, train)] = {'classe' : n+1,
+            train_dict['{}/{}'.format(c, train)] = {'classe' : n,
                                                   'index' : idx,
-                                                  'crop' : crops[idx-1]}
+                                                  'crop' : crops[idx]}
 
         for valid in x_valid:
             idx = lines.index(valid)
-            valid_dict['{}/{}'.format(c, valid)] = {'classe': n+1,
+            valid_dict['{}/{}'.format(c, valid)] = {'classe': n,
                                                   'index' : idx,
-                                                  'crop' : crops[idx-1]}
+                                                  'crop' : crops[idx]}
 
         for test in x_test:
             idx = lines.index(test)
-            test_dict['{}/{}'.format(c, test)] = {'classe': n+1,
+            test_dict['{}/{}'.format(c, test)] = {'classe': n,
                                                   'index' : idx,
-                                                  'crop' : crops[idx-1]}
+                                                  'crop' : crops[idx]}
 
     split = {'train' : train_dict,
              'valid' : valid_dict,
-             'test' : train_dict}
-    json_dict = json.dumps(split, indent=4)
+             'test' : test_dict}
+    json_dict = json.dumps(split, indent=4,)
     
-    with open("split_info.json", "w") as outfile:
+    with open("split_info2.json", "w") as outfile:
+
         outfile.write(json_dict)    
+def split_cancer(path):
+    train_dict = {}
+    valid_dict = {}
+    test_dict = {}
+
+    np.random.seed(17)
+    
 
 
 def load_dataset(Dataset):
@@ -146,7 +160,8 @@ if __name__ == '__main__':
     # with open('./train.json') as file:
     #     full_data = json.load(file)
     #print(full_data['train'])
-    train_valid_test(datasets_root_dir)
+    #train_valid_test(datasets_root_dir)
+    print(torch.distributed.get_world_size())
 
     
     # for i in range(0, 60):
